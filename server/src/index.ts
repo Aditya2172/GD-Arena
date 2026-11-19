@@ -59,6 +59,29 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Prometheus / OpenMetrics Compatible Endpoint
+app.get('/api/metrics', (req, res) => {
+  const mem = process.memoryUsage();
+  res.setHeader('Content-Type', 'text/plain; version=0.0.4');
+  res.send([
+    '# HELP nodejs_uptime_seconds Process uptime in seconds',
+    '# TYPE nodejs_uptime_seconds gauge',
+    `nodejs_uptime_seconds ${process.uptime().toFixed(2)}`,
+    '# HELP nodejs_heap_used_bytes Process heap memory used in bytes',
+    '# TYPE nodejs_heap_used_bytes gauge',
+    `nodejs_heap_used_bytes ${mem.heapUsed}`,
+    '# HELP nodejs_heap_total_bytes Process heap memory total in bytes',
+    '# TYPE nodejs_heap_total_bytes gauge',
+    `nodejs_heap_total_bytes ${mem.heapTotal}`,
+    '# HELP nodejs_rss_bytes Process resident set size in bytes',
+    '# TYPE nodejs_rss_bytes gauge',
+    `nodejs_rss_bytes ${mem.rss}`,
+    '# HELP gdarena_service_up GD Arena backend operational status (1 = up)',
+    '# TYPE gdarena_service_up gauge',
+    'gdarena_service_up 1'
+  ].join('\n') + '\n');
+});
+
 // Protected API routes
 app.use('/api/sessions', authenticateUser, sessionRouter);
 app.use('/api/sessions', authenticateUser, aiRouter);
