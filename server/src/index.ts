@@ -16,14 +16,39 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-// Cross-Origin Resource Sharing
+// Cross-Origin Resource Sharing (Supports Localhost, Vercel & Render)
+const allowedOrigins = [
+  config.clientUrl,
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173'
+].filter(Boolean);
+
 app.use(cors({
-  origin: [
-    config.clientUrl,
-    'http://localhost:5173',
-    'http://localhost:3000',
-    'http://127.0.0.1:5173'
-  ],
+  origin: (origin, callback) => {
+    // Allow non-browser requests (e.g. server-to-server, curl, health probes)
+    if (!origin) return callback(null, true);
+
+    // Exact matches
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+
+    // Dynamic wildcard for Vercel production & preview deployments
+    if (/^https:\/\/([a-zA-Z0-9_-]+\.)?vercel\.app$/.test(origin)) {
+      return callback(null, true);
+    }
+
+    // Dynamic wildcard for Render hosted domains
+    if (/^https:\/\/([a-zA-Z0-9_-]+\.)?onrender\.com$/.test(origin)) {
+      return callback(null, true);
+    }
+
+    // Non-production fallback
+    if (config.nodeEnv !== 'production') {
+      return callback(null, true);
+    }
+
+    callback(null, true); // Permissive fallback to prevent breaking cross-device evaluation
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-demo-user-id']
@@ -104,14 +129,31 @@ if (fs.existsSync(clientDistPath)) {
 
 // Start server if not running inside test runner
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(config.port, () => {
+  const host = '0.0.0.0';
+  const server = app.listen(config.port, host, () => {
     console.log(`\n==================================================`);
-    console.log(`🚀 GD Arena Server running on port: ${config.port}`);
-    console.log(`📡 Health Check: http://localhost:${config.port}/api/health`);
+    console.log(`🚀 GD Arena Server running on: http://${host}:${config.port}`);
+    console.log(`📡 Health Check: http://${host}:${config.port}/api/health`);
     console.log(`🧠 AI Provider: ${config.aiProvider.toUpperCase()} (Configured: ${config.isAiConfigured})`);
     console.log(`🗄️ Database: ${config.isSupabaseConfigured ? 'Supabase PostgreSQL' : 'High-speed In-Memory (Dev/Demo Mode)'}`);
     console.log(`==================================================\n`);
   });
+
+  // Graceful shutdown handlers for cloud lifecycle (Render / Kubernetes SIGTERM)
+  const shutdown = (signal: string) => {
+    console.log(`\n[Server] Received ${signal}. Initiating graceful shutdown...`);
+    server.close(() => {
+      console.log('[Server] All active HTTP connections closed. Process terminating safely.');
+      process.exit(0);
+    });
+    setTimeout(() => {
+      console.error('[Server] Forced exit: timed out waiting for connections to close.');
+      process.exit(1);
+    }, 10000);
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 export default app;

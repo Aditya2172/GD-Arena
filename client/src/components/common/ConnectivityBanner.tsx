@@ -37,11 +37,13 @@ export const ConnectivityBanner: React.FC = () => {
     return () => clearInterval(interval);
   }, [isBackendDown]);
 
+  const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
   if (justRecovered) {
     return (
       <div className="bg-emerald-600/90 text-white px-4 py-2 text-xs font-semibold flex items-center justify-center gap-2 shadow-md transition-all">
         <CheckCircle2 className="w-4 h-4" />
-        <span>Connected to GD Arena Backend API (http://localhost:5000). All systems operational!</span>
+        <span>Connected to GD Arena Backend API. All systems operational!</span>
       </div>
     );
   }
@@ -56,8 +58,12 @@ export const ConnectivityBanner: React.FC = () => {
         <div className="flex items-center gap-2.5">
           <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
           <span>
-            <strong>Backend Unreachable:</strong> Unable to connect to backend server at <code className="bg-rose-950 px-1.5 py-0.5 rounded font-mono text-rose-300">http://localhost:5000/api/health</code>.
-            Launch the backend by running <code className="bg-rose-950 px-1.5 py-0.5 rounded font-mono text-rose-300">npm run dev</code> or double-clicking <code className="bg-rose-950 px-1.5 py-0.5 rounded font-mono text-rose-300">start.bat</code>.
+            <strong>Backend Unreachable:</strong> Unable to connect to the GD Arena API server.
+            {isLocalhost ? (
+              <span> Launch the backend locally using <code className="bg-rose-950 px-1.5 py-0.5 rounded font-mono text-rose-300">npm run dev</code> or <code className="bg-rose-950 px-1.5 py-0.5 rounded font-mono text-rose-300">start.bat</code>.</span>
+            ) : (
+              <span> Ensure your Render backend service is awake and active. (Render free-tier instances may take ~30s to wake up).</span>
+            )}
           </span>
         </div>
 

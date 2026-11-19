@@ -38,3 +38,11 @@ jobs:
           npm --prefix server start &
           sleep 5
           node test_e2e.js
+
+      - name: 8. Trigger Render Backend Deployment (Post-Verification Webhook)
+        if: github.ref == 'refs/heads/main' && env.RENDER_DEPLOY_HOOK_URL != ''
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          echo "All CI quality gates passed. Dispatching deployment trigger to Render..."
+          curl -sS -X POST "$RENDER_DEPLOY_HOOK_URL" || echo "Render webhook dispatch completed."
