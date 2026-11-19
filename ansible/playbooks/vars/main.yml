@@ -1,0 +1,13 @@
+---
+# Global configuration variables for Ansible deployment
+app_name: gd-arena
+app_repo: "https://github.com/your-username/gd-arena.git"
+app_version: main
+app_dest: /opt/gd-arena
+system_timezone: "UTC"
+firewall_allowed_ports:
+  - 22
+  - 80
+  - 443
+  - 5000
+  - 5173

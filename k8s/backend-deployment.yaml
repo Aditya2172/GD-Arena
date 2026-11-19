@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gdarena-backend
+  namespace: gdarena
+  labels:
+    app: gdarena-backend
+    tier: backend
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: gdarena-backend
+  template:
+    metadata:
+      labels:
+        app: gdarena-backend
+        tier: backend
+    spec:
+      containers:
+        - name: backend
+          image: gdarena-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5000
+              name: http
+          envFrom:
+            - configMapRef:
+                name: gdarena-config
+            - secretRef:
+                name: gdarena-secrets
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 2
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+            runAsUser: 1000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gdarena-backend-svc
+  namespace: gdarena
+  labels:
+    app: gdarena-backend
+spec:
+  type: ClusterIP
+  selector:
+    app: gdarena-backend
+  ports:
+    - protocol: TCP
+      port: 5000
+      targetPort: 5000
+      name: http

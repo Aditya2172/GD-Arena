@@ -1,0 +1,43 @@
+---
+# ==========================================
+# GD ARENA — PRODUCTION DEPLOYMENT PLAYBOOK
+# Automates provisioning, hardening, and deployment
+# ==========================================
+
+- name: Provision and Deploy GD Arena Cloud Infrastructure
+  hosts: appservers
+  become: yes
+  vars_files:
+    - vars/main.yml
+
+  roles:
+    - role: common
+      tags: [common, baseline]
+
+    - role: security
+      tags: [security, firewall]
+
+    - role: docker
+      tags: [docker, containers]
+
+    - role: gdarena_app
+      tags: [app, deploy]
+
+- name: Post-Deployment Health Verification
+  hosts: appservers
+  become: no
+  tasks:
+    - name: Query Backend Health Endpoint
+      uri:
+        url: "http://localhost:5000/api/health"
+        method: GET
+        status_code: 200
+        return_content: yes
+      register: health_response
+      retries: 6
+      delay: 5
+      until: health_response.status == 200
+
+    - name: Display Deployment Verification Status
+      debug:
+        msg: "GD Arena is successfully deployed and healthy! Service Version: {{ (health_response.content | from_json).version }}"

@@ -1,0 +1,29 @@
+---
+# Role: common - baseline OS provisioning
+
+- name: Update apt package cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Upgrade system packages
+  apt:
+    upgrade: dist
+  when: ansible_os_family == "Debian"
+
+- name: Install baseline system utilities
+  apt:
+    name:
+      - curl
+      - git
+      - htop
+      - ufw
+      - ca-certificates
+      - gnupg
+      - lsb-release
+      - jq
+    state: present
+
+- name: Configure system timezone
+  timezone:
+    name: "{{ system_timezone }}"

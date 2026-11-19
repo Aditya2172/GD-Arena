@@ -1,0 +1,32 @@
+---
+# Role: gdarena_app - application checkout, environment config & container launch
+
+- name: Create application deployment directory
+  file:
+    path: "{{ app_dest }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0755'
+
+- name: Sync application codebase from Git
+  git:
+    repo: "{{ app_repo }}"
+    dest: "{{ app_dest }}"
+    version: "{{ app_version }}"
+    force: yes
+  become_user: "{{ ansible_user }}"
+
+- name: Deploy production environment configuration
+  template:
+    src: env.j2
+    dest: "{{ app_dest }}/.env"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0600'
+
+- name: Pull and launch GD Arena multi-container stack via Docker Compose
+  command: docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
+  args:
+    chdir: "{{ app_dest }}"
+  become_user: "{{ ansible_user }}"

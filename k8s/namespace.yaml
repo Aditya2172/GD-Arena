@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gdarena
+  labels:
+    app.kubernetes.io/name: gdarena
+    app.kubernetes.io/part-of: gd-arena-platform
