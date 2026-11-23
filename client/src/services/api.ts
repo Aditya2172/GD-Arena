@@ -12,6 +12,10 @@ function getBaseUrl(): string {
   if (envUrl) {
     // Strip trailing slashes
     envUrl = envUrl.replace(/\/+$/, '');
+    // Auto-correct obsolete Render hostname if present
+    if (envUrl.includes('gd-arena-backend.onrender.com')) {
+      envUrl = envUrl.replace('gd-arena-backend.onrender.com', 'gd-arena-backend-u772.onrender.com');
+    }
     // Ensure /api suffix is present
     if (!envUrl.endsWith('/api')) {
       envUrl = `${envUrl}/api`;
@@ -22,7 +26,8 @@ function getBaseUrl(): string {
   if (typeof window !== 'undefined' && (window.location.port === '5173' || window.location.port === '3000')) {
     return 'http://localhost:5000/api';
   }
-  return '/api';
+  // Production default fallback
+  return 'https://gd-arena-backend-u772.onrender.com/api';
 }
 
 const API_BASE_URL = getBaseUrl();
