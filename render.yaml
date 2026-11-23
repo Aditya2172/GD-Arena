@@ -15,7 +15,7 @@ services:
       - key: AI_PROVIDER
         value: gemini
       - key: CLIENT_URL
-        value: https://gd-arena.vercel.app
+        value: https://gd-arena-mu.vercel.app
       - key: GEMINI_API_KEY
         sync: false
       - key: SUPABASE_URL
