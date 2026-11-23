@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -25,7 +25,7 @@ const allowedOrigins = [
 ].filter(Boolean);
 
 app.use(cors({
-  origin: (origin, callback) => {
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
     // Allow non-browser requests (e.g. server-to-server, curl, health probes)
     if (!origin) return callback(null, true);
 
@@ -60,7 +60,7 @@ app.use(express.json({ limit: '1mb' }));
 app.use(rateLimiter(60000, 100));
 
 // Public Health Check Endpoint
-app.get('/api/health', (req, res) => {
+app.get('/api/health', (req: Request, res: Response) => {
   res.json({
     status: 'healthy',
     service: 'GD Arena Backend API',
@@ -85,7 +85,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Prometheus / OpenMetrics Compatible Endpoint
-app.get('/api/metrics', (req, res) => {
+app.get('/api/metrics', (req: Request, res: Response) => {
   const mem = process.memoryUsage();
   res.setHeader('Content-Type', 'text/plain; version=0.0.4');
   res.send([
@@ -119,7 +119,7 @@ app.use(errorHandler);
 const clientDistPath = path.resolve(__dirname, '../../client/dist');
 if (fs.existsSync(clientDistPath)) {
   app.use(express.static(clientDistPath));
-  app.get('*', (req, res, next) => {
+  app.get('*', (req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith('/api')) {
       return next();
     }

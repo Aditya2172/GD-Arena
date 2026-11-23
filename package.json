@@ -18,6 +18,10 @@
     "test:server": "npm --prefix server test",
     "test": "npm run test:server"
   },
+  "dependencies": {
+    "@types/node": "^22.10.7",
+    "typescript": "^5.7.3"
+  },
   "devDependencies": {
     "concurrently": "^8.2.2"
   },
