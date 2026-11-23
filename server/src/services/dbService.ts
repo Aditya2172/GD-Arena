@@ -17,6 +17,29 @@ const memoryMessages = new Map<string, DiscussionMessage[]>();
 const memoryReports = new Map<string, SessionReport>();
 const memoryCompletedExercises = new Set<string>();
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function isDemoUser(userId?: string): boolean {
+  return Boolean(userId && typeof userId === 'string' && userId.startsWith('demo-'));
+}
+
+export function isValidUuid(id?: string): boolean {
+  return Boolean(id && typeof id === 'string' && UUID_REGEX.test(id));
+}
+
+export function validateUserId(userId?: string): 'demo' | 'database' {
+  if (!userId || typeof userId !== 'string') {
+    throw new Error('User ID is required.');
+  }
+  if (isDemoUser(userId)) {
+    return 'demo';
+  }
+  if (isValidUuid(userId)) {
+    return 'database';
+  }
+  throw new Error(`Invalid user identifier format: '${userId}'. Must be a valid UUID or an authorized demo identifier starting with 'demo-'.`);
+}
+
 let supabase: any = null;
 if (config.isSupabaseConfigured) {
   supabase = createClient(
@@ -31,6 +54,7 @@ if (config.isSupabaseConfigured) {
 export const dbService = {
   // --- SESSIONS ---
   async createSession(session: Omit<DiscussionSession, 'id' | 'created_at'>): Promise<DiscussionSession> {
+    const userType = validateUserId(session.user_id);
     const id = crypto.randomUUID();
     const newSession: DiscussionSession = {
       ...session,
@@ -38,7 +62,7 @@ export const dbService = {
       created_at: new Date().toISOString()
     };
 
-    if (supabase) {
+    if (userType === 'database' && supabase) {
       const { data, error } = await supabase
         .from('discussion_sessions')
         .insert({
@@ -62,62 +86,68 @@ export const dbService = {
       return data;
     }
 
+    // Demo users ('demo-*') and local test/dev environments use high-speed in-memory store
     memorySessions.set(id, newSession);
     memoryMessages.set(id, []);
     return newSession;
   },
 
   async getSessionById(sessionId: string, userId: string): Promise<DiscussionSession | null> {
-    if (supabase) {
-      const { data, error } = await supabase
-        .from('discussion_sessions')
-        .select('*')
-        .eq('id', sessionId)
-        .eq('user_id', userId)
-        .single();
+    const userType = validateUserId(userId);
 
-      if (error || !data) return null;
-      return data;
+    if (memorySessions.has(sessionId) || userType === 'demo' || !supabase) {
+      const session = memorySessions.get(sessionId);
+      if (!session || session.user_id !== userId) return null;
+      return session;
     }
 
-    const session = memorySessions.get(sessionId);
-    if (!session || session.user_id !== userId) return null;
-    return session;
+    const { data, error } = await supabase
+      .from('discussion_sessions')
+      .select('*')
+      .eq('id', sessionId)
+      .eq('user_id', userId)
+      .single();
+
+    if (error || !data) return null;
+    return data;
   },
 
   async getUserSessions(userId: string): Promise<DiscussionSession[]> {
-    if (supabase) {
-      const { data, error } = await supabase
-        .from('discussion_sessions')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
+    const userType = validateUserId(userId);
 
-      if (error) throw new Error(`Supabase error fetching sessions: ${error.message}`);
-      return data || [];
+    if (userType === 'demo' || !supabase) {
+      return Array.from(memorySessions.values())
+        .filter(s => s.user_id === userId)
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     }
 
-    return Array.from(memorySessions.values())
-      .filter(s => s.user_id === userId)
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    const { data, error } = await supabase
+      .from('discussion_sessions')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw new Error(`Supabase error fetching sessions: ${error.message}`);
+    return data || [];
   },
 
   async updateSessionStatus(sessionId: string, status: 'completed' | 'abandoned'): Promise<void> {
     const endedAt = new Date().toISOString();
-    if (supabase) {
-      await supabase
-        .from('discussion_sessions')
-        .update({ status, ended_at: endedAt })
-        .eq('id', sessionId);
+
+    if (memorySessions.has(sessionId) || !supabase) {
+      const session = memorySessions.get(sessionId);
+      if (session) {
+        session.status = status;
+        session.ended_at = endedAt;
+        memorySessions.set(sessionId, session);
+      }
       return;
     }
 
-    const session = memorySessions.get(sessionId);
-    if (session) {
-      session.status = status;
-      session.ended_at = endedAt;
-      memorySessions.set(sessionId, session);
-    }
+    await supabase
+      .from('discussion_sessions')
+      .update({ status, ended_at: endedAt })
+      .eq('id', sessionId);
   },
 
   // --- MESSAGES ---
@@ -129,49 +159,50 @@ export const dbService = {
       created_at: new Date().toISOString()
     };
 
-    if (supabase) {
-      const { data, error } = await supabase
-        .from('discussion_messages')
-        .insert({
-          id: newMessage.id,
-          session_id: newMessage.session_id,
-          speaker_type: newMessage.speaker_type,
-          speaker_name: newMessage.speaker_name,
-          personality: newMessage.personality || null,
-          message_text: newMessage.message_text,
-          sequence_number: newMessage.sequence_number,
-          created_at: newMessage.created_at
-        })
-        .select()
-        .single();
-
-      if (error) throw new Error(`Supabase error saving message: ${error.message}`);
-      return data;
+    if (memorySessions.has(newMessage.session_id) || !supabase) {
+      const list = memoryMessages.get(newMessage.session_id) || [];
+      list.push(newMessage);
+      memoryMessages.set(newMessage.session_id, list);
+      return newMessage;
     }
 
-    const list = memoryMessages.get(newMessage.session_id) || [];
-    list.push(newMessage);
-    memoryMessages.set(newMessage.session_id, list);
-    return newMessage;
+    const { data, error } = await supabase
+      .from('discussion_messages')
+      .insert({
+        id: newMessage.id,
+        session_id: newMessage.session_id,
+        speaker_type: newMessage.speaker_type,
+        speaker_name: newMessage.speaker_name,
+        personality: newMessage.personality || null,
+        message_text: newMessage.message_text,
+        sequence_number: newMessage.sequence_number,
+        created_at: newMessage.created_at
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(`Supabase error saving message: ${error.message}`);
+    return data;
   },
 
   async getSessionMessages(sessionId: string): Promise<DiscussionMessage[]> {
-    if (supabase) {
-      const { data, error } = await supabase
-        .from('discussion_messages')
-        .select('*')
-        .eq('session_id', sessionId)
-        .order('sequence_number', { ascending: true });
-
-      if (error) throw new Error(`Supabase error fetching messages: ${error.message}`);
-      return data || [];
+    if (memorySessions.has(sessionId) || !supabase) {
+      return memoryMessages.get(sessionId) || [];
     }
 
-    return memoryMessages.get(sessionId) || [];
+    const { data, error } = await supabase
+      .from('discussion_messages')
+      .select('*')
+      .eq('session_id', sessionId)
+      .order('sequence_number', { ascending: true });
+
+    if (error) throw new Error(`Supabase error fetching messages: ${error.message}`);
+    return data || [];
   },
 
   // --- REPORTS ---
   async saveReport(report: Omit<SessionReport, 'id' | 'created_at'>): Promise<SessionReport> {
+    const userType = validateUserId(report.user_id);
     const id = crypto.randomUUID();
     const newReport: SessionReport = {
       ...report,
@@ -179,82 +210,84 @@ export const dbService = {
       created_at: new Date().toISOString()
     };
 
-    if (supabase) {
-      const { data, error } = await supabase
-        .from('session_reports')
-        .insert({
-          id: newReport.id,
-          session_id: newReport.session_id,
-          user_id: newReport.user_id,
-          overall_score: newReport.overall_score,
-          communication_clarity: newReport.scores.communication_clarity,
-          topic_relevance: newReport.scores.topic_relevance,
-          logical_reasoning: newReport.scores.logical_reasoning,
-          vocabulary: newReport.scores.vocabulary,
-          argument_structure: newReport.scores.argument_structure,
-          critical_thinking: newReport.scores.critical_thinking,
-          participation: newReport.scores.participation,
-          confidence_indicators: newReport.scores.confidence_indicators,
-          strengths: newReport.strengths,
-          areas_for_improvement: newReport.areas_for_improvement,
-          missed_opportunities: newReport.missed_opportunities,
-          improved_argument_examples: newReport.improved_argument_examples,
-          recommendations: newReport.recommendations,
-          next_session_goals: newReport.next_session_goals,
-          discussion_summary: newReport.discussion_summary,
-          created_at: newReport.created_at
-        })
-        .select()
-        .single();
-
-      if (error) throw new Error(`Supabase error saving report: ${error.message}`);
-      return {
-        ...data,
-        scores: {
-          communication_clarity: data.communication_clarity,
-          topic_relevance: data.topic_relevance,
-          logical_reasoning: data.logical_reasoning,
-          vocabulary: data.vocabulary,
-          argument_structure: data.argument_structure,
-          critical_thinking: data.critical_thinking,
-          participation: data.participation,
-          confidence_indicators: data.confidence_indicators
-        }
-      };
+    if (memorySessions.has(newReport.session_id) || userType === 'demo' || !supabase) {
+      memoryReports.set(newReport.session_id, newReport);
+      return newReport;
     }
 
-    memoryReports.set(newReport.session_id, newReport);
-    return newReport;
+    const { data, error } = await supabase
+      .from('session_reports')
+      .insert({
+        id: newReport.id,
+        session_id: newReport.session_id,
+        user_id: newReport.user_id,
+        overall_score: newReport.overall_score,
+        communication_clarity: newReport.scores.communication_clarity,
+        topic_relevance: newReport.scores.topic_relevance,
+        logical_reasoning: newReport.scores.logical_reasoning,
+        vocabulary: newReport.scores.vocabulary,
+        argument_structure: newReport.scores.argument_structure,
+        critical_thinking: newReport.scores.critical_thinking,
+        participation: newReport.scores.participation,
+        confidence_indicators: newReport.scores.confidence_indicators,
+        strengths: newReport.strengths,
+        areas_for_improvement: newReport.areas_for_improvement,
+        missed_opportunities: newReport.missed_opportunities,
+        improved_argument_examples: newReport.improved_argument_examples,
+        recommendations: newReport.recommendations,
+        next_session_goals: newReport.next_session_goals,
+        discussion_summary: newReport.discussion_summary,
+        created_at: newReport.created_at
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(`Supabase error saving report: ${error.message}`);
+    return {
+      ...data,
+      scores: {
+        communication_clarity: data.communication_clarity,
+        topic_relevance: data.topic_relevance,
+        logical_reasoning: data.logical_reasoning,
+        vocabulary: data.vocabulary,
+        argument_structure: data.argument_structure,
+        critical_thinking: data.critical_thinking,
+        participation: data.participation,
+        confidence_indicators: data.confidence_indicators
+      }
+    };
   },
 
   async getReportBySessionId(sessionId: string, userId: string): Promise<SessionReport | null> {
-    if (supabase) {
-      const { data, error } = await supabase
-        .from('session_reports')
-        .select('*')
-        .eq('session_id', sessionId)
-        .eq('user_id', userId)
-        .single();
+    const userType = validateUserId(userId);
 
-      if (error || !data) return null;
-      return {
-        ...data,
-        scores: {
-          communication_clarity: data.communication_clarity,
-          topic_relevance: data.topic_relevance,
-          logical_reasoning: data.logical_reasoning,
-          vocabulary: data.vocabulary,
-          argument_structure: data.argument_structure,
-          critical_thinking: data.critical_thinking,
-          participation: data.participation,
-          confidence_indicators: data.confidence_indicators
-        }
-      };
+    if (memorySessions.has(sessionId) || userType === 'demo' || !supabase) {
+      const report = memoryReports.get(sessionId);
+      if (!report || report.user_id !== userId) return null;
+      return report;
     }
 
-    const report = memoryReports.get(sessionId);
-    if (!report || report.user_id !== userId) return null;
-    return report;
+    const { data, error } = await supabase
+      .from('session_reports')
+      .select('*')
+      .eq('session_id', sessionId)
+      .eq('user_id', userId)
+      .single();
+
+    if (error || !data) return null;
+    return {
+      ...data,
+      scores: {
+        communication_clarity: data.communication_clarity,
+        topic_relevance: data.topic_relevance,
+        logical_reasoning: data.logical_reasoning,
+        vocabulary: data.vocabulary,
+        argument_structure: data.argument_structure,
+        critical_thinking: data.critical_thinking,
+        participation: data.participation,
+        confidence_indicators: data.confidence_indicators
+      }
+    };
   },
 
   // --- ANALYTICS ---
@@ -435,6 +468,7 @@ export const dbService = {
 
   // --- EXERCISES ---
   async completeExercise(exerciseId: string, userId: string): Promise<{ success: boolean; exerciseId: string; completedAt: string }> {
+    validateUserId(userId);
     const key = `${userId}:${exerciseId}`;
     memoryCompletedExercises.add(key);
     return {
@@ -445,6 +479,7 @@ export const dbService = {
   },
 
   async getCompletedExercises(userId: string): Promise<string[]> {
+    validateUserId(userId);
     const list: string[] = [];
     for (const item of memoryCompletedExercises) {
       if (item.startsWith(`${userId}:`)) {
