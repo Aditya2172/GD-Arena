@@ -2,6 +2,17 @@
 
 > **"Speak Confidently. Think Critically. Lead Discussions."**
 
+**Candidate**: Aditya Kumar Gupta  
+**Course**: DevOps Engineering & Cloud Computing  
+**Institute**: Noida Institute of Engineering and Technology (NIET)  
+**GitHub Repository**: [https://github.com/Aditya2172/GD-Arena](https://github.com/Aditya2172/GD-Arena)  
+**Architecture Diagram**: [GD_Arena_Architecture.png](GD_Arena_Architecture.png)  
+**Docker Manual**: [DOCKER_SETUP.md](DOCKER_SETUP.md)  
+**CI/CD Manual**: [CICD_SETUP.md](CICD_SETUP.md)  
+**Academic Assessment Report**: [DEVOPS_ASSIGNMENT_REPORT.md](DEVOPS_ASSIGNMENT_REPORT.md)  
+
+---
+
 **GD Arena** is an enterprise-grade, voice-first AI web application built specifically for college students and job seekers preparing for campus recruitment, corporate group discussions (GDs), and communication assessments.
 
 Candidates enter a virtual discussion room, speak naturally through their microphone, debate in real-time with multiple AI participants possessing distinct personas, listen to spoken AI responses, and receive comprehensive rubric-based performance assessments with actionable sentence rewrites, 8 quantitative metrics, and longitudinal growth tracking.
