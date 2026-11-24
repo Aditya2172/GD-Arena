@@ -29,17 +29,22 @@ type ViewTab =
   | 'compare';
 
 const MainApp: React.FC = () => {
-  const { user } = useAuth();
-  const [currentTab, setCurrentTab] = useState<ViewTab>(user ? 'dashboard' : 'landing');
+  const { user, isPasswordRecovery } = useAuth();
+  const [currentTab, setCurrentTab] = useState<ViewTab>(() => {
+    if (isPasswordRecovery) return 'auth';
+    return user ? 'dashboard' : 'landing';
+  });
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [initialCreateTopic, setInitialCreateTopic] = useState<string>('');
 
-  // Auto-route on login status change
+  // Auto-route on login status change or password recovery event
   React.useEffect(() => {
-    if (user && (currentTab === 'landing' || currentTab === 'auth')) {
+    if (isPasswordRecovery) {
+      setCurrentTab('auth');
+    } else if (user && (currentTab === 'landing' || currentTab === 'auth')) {
       setCurrentTab('dashboard');
     }
-  }, [user]);
+  }, [user, isPasswordRecovery]);
 
   const handleStartPracticeFromLanding = () => {
     if (user) {

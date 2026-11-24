@@ -2,12 +2,20 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '../types';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 
+export interface SignUpResult {
+  needsEmailVerification: boolean;
+}
+
 interface AuthContextType {
   user: User | null;
   token: string | null;
   isLoading: boolean;
   login: (email: string, pass: string) => Promise<void>;
-  signUp: (email: string, pass: string, displayName: string) => Promise<void>;
+  signUp: (email: string, pass: string, displayName: string) => Promise<SignUpResult>;
+  resetPassword: (email: string) => Promise<void>;
+  updatePassword: (newPassword: string) => Promise<void>;
+  isPasswordRecovery: boolean;
+  setIsPasswordRecovery: (isRecovery: boolean) => void;
   loginDemo: (name?: string) => void;
   logout: () => Promise<void>;
   isDemoUser: boolean;
@@ -19,6 +27,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return (
+        window.location.hash.includes('type=recovery') ||
+        new URLSearchParams(window.location.search).get('type') === 'recovery'
+      );
+    }
+    return false;
+  });
 
   useEffect(() => {
     // Check local storage for persistent session
@@ -61,7 +78,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setIsLoading(false);
         });
 
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        if (event === 'PASSWORD_RECOVERY') {
+          setIsPasswordRecovery(true);
+        }
         if (session?.user) {
           const authUser: User = {
             id: session.user.id,
@@ -115,7 +135,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const signUp = async (email: string, pass: string, displayName: string) => {
+  const signUp = async (email: string, pass: string, displayName: string): Promise<SignUpResult> => {
     setIsLoading(true);
     try {
       if (isSupabaseConfigured && supabase) {
@@ -136,7 +156,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setToken(data.session.access_token);
             localStorage.setItem('gd_arena_token', data.session.access_token);
             localStorage.setItem('gd_arena_user', JSON.stringify(authUser));
+            return { needsEmailVerification: false };
           }
+          // Supabase email confirmation required
+          return { needsEmailVerification: true };
         } catch (authErr: any) {
           if (authErr?.message?.includes('Failed to fetch') || authErr?.name === 'TypeError') {
             throw new Error('Registration service is currently unreachable. Please check your network connection or use 1-Click Demo to proceed.');
@@ -145,6 +168,53 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       } else {
         loginDemo(displayName);
+        return { needsEmailVerification: false };
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const resetPassword = async (email: string): Promise<void> => {
+    setIsLoading(true);
+    try {
+      if (isSupabaseConfigured && supabase) {
+        try {
+          const { error } = await supabase.auth.resetPasswordForEmail(email, {
+            redirectTo: typeof window !== 'undefined' ? `${window.location.origin}` : undefined
+          });
+          if (error) throw error;
+        } catch (authErr: any) {
+          if (authErr?.message?.includes('Failed to fetch') || authErr?.name === 'TypeError') {
+            throw new Error('Password reset service is currently unreachable. Please check your network connection or use 1-Click Demo to proceed.');
+          }
+          throw authErr;
+        }
+      } else {
+        // Simulation for local/demo mode
+        await new Promise((resolve) => setTimeout(resolve, 600));
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const updatePassword = async (newPassword: string): Promise<void> => {
+    setIsLoading(true);
+    try {
+      if (isSupabaseConfigured && supabase) {
+        try {
+          const { error } = await supabase.auth.updateUser({ password: newPassword });
+          if (error) throw error;
+        } catch (authErr: any) {
+          if (authErr?.message?.includes('Failed to fetch') || authErr?.name === 'TypeError') {
+            throw new Error('Password update service is currently unreachable. Please check your network connection.');
+          }
+          throw authErr;
+        }
+      } else {
+        // Mock update for local demo
+        await new Promise((resolve) => setTimeout(resolve, 500));
       }
     } finally {
       setIsLoading(false);
@@ -181,6 +251,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isLoading,
       login,
       signUp,
+      resetPassword,
+      updatePassword,
+      isPasswordRecovery,
+      setIsPasswordRecovery,
       loginDemo,
       logout,
       isDemoUser: Boolean(token?.startsWith('demo-'))
