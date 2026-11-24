@@ -40,20 +40,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Check Supabase session if configured
     if (isSupabaseConfigured && supabase) {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session?.user) {
-          const authUser: User = {
-            id: session.user.id,
-            email: session.user.email,
-            displayName: session.user.user_metadata?.display_name || session.user.email?.split('@')[0]
-          };
-          setUser(authUser);
-          setToken(session.access_token);
-          localStorage.setItem('gd_arena_token', session.access_token);
-          localStorage.setItem('gd_arena_user', JSON.stringify(authUser));
-        }
-        setIsLoading(false);
-      });
+      supabase.auth.getSession()
+        .then(({ data: { session } }) => {
+          if (session?.user) {
+            const authUser: User = {
+              id: session.user.id,
+              email: session.user.email,
+              displayName: session.user.user_metadata?.display_name || session.user.email?.split('@')[0]
+            };
+            setUser(authUser);
+            setToken(session.access_token);
+            localStorage.setItem('gd_arena_token', session.access_token);
+            localStorage.setItem('gd_arena_user', JSON.stringify(authUser));
+          }
+        })
+        .catch((err) => {
+          console.warn('[Auth] Error restoring Supabase session:', err);
+        })
+        .finally(() => {
+          setIsLoading(false);
+        });
 
       const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
         if (session?.user) {
@@ -80,21 +86,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
     try {
       if (isSupabaseConfigured && supabase) {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
-        if (error) throw error;
-        if (data.user && data.session) {
-          const authUser: User = {
-            id: data.user.id,
-            email: data.user.email,
-            displayName: data.user.user_metadata?.display_name || email.split('@')[0]
-          };
-          setUser(authUser);
-          setToken(data.session.access_token);
-          localStorage.setItem('gd_arena_token', data.session.access_token);
-          localStorage.setItem('gd_arena_user', JSON.stringify(authUser));
+        try {
+          const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
+          if (error) throw error;
+          if (data.user && data.session) {
+            const authUser: User = {
+              id: data.user.id,
+              email: data.user.email,
+              displayName: data.user.user_metadata?.display_name || email.split('@')[0]
+            };
+            setUser(authUser);
+            setToken(data.session.access_token);
+            localStorage.setItem('gd_arena_token', data.session.access_token);
+            localStorage.setItem('gd_arena_user', JSON.stringify(authUser));
+          }
+        } catch (authErr: any) {
+          if (authErr?.message?.includes('Failed to fetch') || authErr?.name === 'TypeError') {
+            throw new Error('Authentication service is currently unreachable. Please check your network connection or use 1-Click Demo to proceed.');
+          }
+          throw authErr;
         }
       } else {
-        // Mock login
+        // Mock login only when Supabase is explicitly not configured
         loginDemo(email.split('@')[0]);
       }
     } finally {
@@ -106,22 +119,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
     try {
       if (isSupabaseConfigured && supabase) {
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password: pass,
-          options: { data: { display_name: displayName } }
-        });
-        if (error) throw error;
-        if (data.user && data.session) {
-          const authUser: User = {
-            id: data.user.id,
-            email: data.user.email,
-            displayName
-          };
-          setUser(authUser);
-          setToken(data.session.access_token);
-          localStorage.setItem('gd_arena_token', data.session.access_token);
-          localStorage.setItem('gd_arena_user', JSON.stringify(authUser));
+        try {
+          const { data, error } = await supabase.auth.signUp({
+            email,
+            password: pass,
+            options: { data: { display_name: displayName } }
+          });
+          if (error) throw error;
+          if (data.user && data.session) {
+            const authUser: User = {
+              id: data.user.id,
+              email: data.user.email,
+              displayName
+            };
+            setUser(authUser);
+            setToken(data.session.access_token);
+            localStorage.setItem('gd_arena_token', data.session.access_token);
+            localStorage.setItem('gd_arena_user', JSON.stringify(authUser));
+          }
+        } catch (authErr: any) {
+          if (authErr?.message?.includes('Failed to fetch') || authErr?.name === 'TypeError') {
+            throw new Error('Registration service is currently unreachable. Please check your network connection or use 1-Click Demo to proceed.');
+          }
+          throw authErr;
         }
       } else {
         loginDemo(displayName);

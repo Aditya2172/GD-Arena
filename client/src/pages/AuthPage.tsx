@@ -43,6 +43,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
   };
 
   const handleDemoLogin = () => {
+    setError(null);
     loginDemo('Candidate Priya');
     onSuccess();
   };
